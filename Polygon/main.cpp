@@ -1,34 +1,92 @@
-//
-//  main.cpp
-//  Polygon
-//
-//  Created by Shawn Yang on 11/3/18.
-//  Copyright © 2018 Shawn Yang. All rights reserved.
-//
+//  CS718 Computer Graphics
+//  project3_polygon
+//  Shawn Yang
+//  11/7/2018
 
 #include <iostream>
 #include <GLUT/glut.h>
+#include <cmath>
 
+GLint vert[100][2], points[100][2], vec1[2], vec2[2];
+int width =400, height =600, n =0, m=0,type = GL_LINE_STRIP, v;
+bool rubberbanding = false, antialiasing = false, is_polygon_finished=false;
 
-GLint vert[100][2];
-int width =400, height =600, n =0, type = GL_LINE_STRIP, v;
-bool rubberbanding = false, antialiasing = false;
+double get_angle(GLint vec1[], GLint vec2[]){
+  // angle = arccos( (vec1 * vec2)/(|vec1||vec2|) )
+  double num=vec1[0]*vec2[0]+vec1[1]*vec2[1];
+  double denom = sqrt(vec1[0]*vec1[0]+vec1[1]*vec1[1])
+                * sqrt(vec2[0]*vec2[0]+vec2[1]*vec2[1]);
+  return acos(num/denom);
+}
+
+bool is_clockwise(GLint vec1[], GLint vec2[]){
+  // k = x1*y2 - y1*x2
+  GLint k = vec1[0]*vec2[1] - vec1[1]*vec2[0];
+  return k>0;
+}
+
+bool is_inside(GLint point[]){
+  double TWO_PI = 6.283;
+  double TOL= 0.001;
+  double angle_sum=0;
+  double angle;
+  
+  for (int i=0; i< n-1;i++){
+    // calculate for the pair of vertex used for calculating angle and direction
+    vec1[0] =vert[i][0]-point[0];
+    vec1[1] =vert[i][1]-point[1];
+    vec2[0] =vert[i+1][0] -point[0];
+    vec2[1] =vert[i+1][1] -point[1];
+    
+    angle = get_angle(vec1, vec2);
+    angle_sum = is_clockwise(vec1, vec2)? angle_sum+angle:angle_sum-angle;
+  }
+  angle_sum = abs(angle_sum);
+  // is inside only if angle_sum fell within the set tolerance of TWO_PI
+  return angle_sum + TOL > TWO_PI && angle_sum -TOL < TWO_PI;
+}
+
 void display(){
   glClear(GL_COLOR_BUFFER_BIT);
-  if (n == 1 && (type ==GL_LINE_STRIP || type == GL_LINE_LOOP)){
-    glBegin(GL_POINT);
+  if (n == 1){
+    glBegin(GL_POINTS);
     glVertex2iv(vert[0]);
     glEnd();
   }
-  glBegin(type);
+  glBegin(GL_LINE_STRIP);
   for (int i=0; i<n; i++)
     glVertex2iv(vert[i]);
   glEnd();
+  
+  if (is_polygon_finished){
+    glBegin(GL_POINTS);
+    for (int i=0; i<m; i++){
+      if (is_inside(points[i])) glColor3f(0, 0.5, 0);
+      else glColor3f(1, 0, 0);
+      glVertex2iv(points[i]);
+    }
+    glColor3f(1,1,0);
+    glEnd();
+  }
   glutSwapBuffers();
 }
 
 void keyboard(unsigned char key, int x, int y){
   switch (key){
+    case 'c':
+      if (!is_polygon_finished){
+        v=n++;
+        vert[v][0] =vert[0][0];
+        vert[v][1] = vert[0][1];
+        is_polygon_finished=true;
+      }
+      break;
+    
+    case 'r':
+      n=0;
+      m=0;
+      is_polygon_finished=false;
+      break;
       
     case 'a':
       antialiasing = !antialiasing;
@@ -41,68 +99,30 @@ void keyboard(unsigned char key, int x, int y){
         glDisable(GL_LINE_SMOOTH);
       }
       break;
-      
-    case 'c':
-      n=0;
-      break;
-    
-    case 'l':
-      type = GL_LINE_STRIP;
-      break;
-      
-    case 'p':
-      type = GL_LINE_LOOP;
-      break;
-    
-    case 'v':
-      type = GL_POINTS;
-      break;
   }
   glutPostRedisplay();
-}
-
-int findVertex(int x, int y){
-  int dx, dy;
-  for (int i=0; i<n; i++){
-    dx = vert[i][0]-x;
-    dy = vert[i][1] - y;
-    if (dx*dx+dy*dy<16)
-      return i;
-  }
-  return -1;
 }
 
 void mouse (int button, int state, int x, int y){
   switch (button){
     case GLUT_LEFT_BUTTON:
       if (state == GLUT_DOWN){
-        v=n++;
-        vert[v][0] =x;
-        vert[v][1] = height-1-y;
-        rubberbanding = true;
-        glutPostRedisplay();
+        if (is_polygon_finished){
+          v=m++;
+          points[v][0]=x;
+          points[v][1] = height-1-y;
+          
+        }
+        else{
+          v=n++;
+          vert[v][0] =x;
+          vert[v][1] = height-1-y;
+          rubberbanding = true;
+        }
       }
       else
         rubberbanding = false;
-      break;
-      
-    case GLUT_RIGHT_BUTTON:
-      if (state == GLUT_DOWN && (v = findVertex(x, height-1-y))!=-1){
-        if (glutGetModifiers()==GLUT_ACTIVE_CTRL){
-          for (int i=v; i<n-1; i++){
-            vert[i][0] =vert[i+1][0];
-            vert[i][1] =vert[i+1][1];
-          }
-          n--;
-        }else{
-          vert[v][0]=x;
-          vert[v][1] = height -1-y;
-          rubberbanding = true;
-        }
-        glutPostRedisplay();
-      }
-      else
-        rubberbanding=false;
+      glutPostRedisplay();
       break;
   }
 }
@@ -135,8 +155,6 @@ int main(int argc, char ** argv) {
   glutMouseFunc(mouse);
   glutMotionFunc(motion);
   glutMainLoop();
-  
-  
   
   return 0;
 }
